@@ -85,7 +85,7 @@ class ModelSelector:
     def sk_flow(self):
         self.sk_tuned_models = {}
         if self.mlflow_tracking:
-            # mlflow.set_tracking_uri("http://localhost:5000")
+            mlflow.set_tracking_uri("http://localhost:5000")
             with mlflow.start_run():
                 # Create experiment (artifact_location=./ml_runs by default)
                 mlflow.set_experiment(self.name)
