@@ -119,3 +119,13 @@ class NeuralNetworkRegression(NeuralNetwork):
         OUTPUT: loss -> Mean Squared Error between predictions and actual labels.
         """
         return F.mse_loss(y_hat, y)
+
+
+        # def train(self, model, train_dataloader, test_dataloader, val_dataloader, epochs=25, lr=0.50, weight_decay_L2= 0, threshold= 0.5, print_losses=False):
+        #     # optimiser = torch.optim.Adam(model.parameters(), lr, weight_decay=weight_decay_L2) # create optimiser
+        #     optimiser = adabound.AdaBound(model.parameters(), lr=1e-3, final_lr=0.1)
+        #     losses = []
+        #     batch_idx = 0
+        #     for epoch in tqdm(range(epochs)):
+        #         for step, (X, y) in  enumerate(train_dataloader):
+        # https://playlai-container-service-2.8ljng1cpf8ma0.eu-west-2.cs.amazonlightsail.com/#/

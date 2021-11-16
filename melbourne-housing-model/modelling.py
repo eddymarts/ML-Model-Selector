@@ -71,28 +71,28 @@ if __name__ == '__main__':
         # }
     }
 
-    # model_selector = ModelSelector(
-    #     name="Melbourne",
-    #     X_sets=melbourne.X_sets,
-    #     y_sets=melbourne.y_sets,
-    #     sk_models=models,
-    #     mode='regressor',
-    #     mlflow_tracking=True,
-    #     multiproc=False
-    #     )
-    # model_selector.sk_flow()
+    model_selector = ModelSelector(
+        name="Melbourne",
+        X_sets=melbourne.X_sets,
+        y_sets=melbourne.y_sets,
+        sk_models=models,
+        mode='regressor',
+        mlflow_tracking=True,
+        multiproc=False
+        )
+    model_selector.sk_flow()
 
     
-    nn_regressor = NeuralNetworkRegression(melbourne.n_features, melbourne.n_labels)
-    nn_regressor.fit(train_load=melbourne.dataloaders[0], test_load=melbourne.dataloaders[1], epochs=2)
-    X_test = TorchDataSet(X=melbourne.X_sets[1])
-    X_test_loader = DataLoader(X_test, batch_size=16,
-                shuffle=False, num_workers=cpu_count()-1)
-    y_pred = nn_regressor.predict(X_test_loader)
-    print(y_pred)
-    print(type(y_pred))
+    # nn_regressor = NeuralNetworkRegression(melbourne.n_features, melbourne.n_labels)
+    # nn_regressor.fit(train_load=melbourne.dataloaders[0], test_load=melbourne.dataloaders[1], epochs=2)
+    # X_test = TorchDataSet(X=melbourne.X_sets[1])
+    # X_test_loader = DataLoader(X_test, batch_size=16,
+    #             shuffle=False, num_workers=cpu_count()-1)
+    # y_pred = nn_regressor.predict(X_test_loader)
+    # print(y_pred)
+    # print(type(y_pred))
 
-    print("R2 score:", r2_score(y_pred.detach().numpy(), melbourne.y_sets[1]))
+    # print("R2 score:", r2_score(y_pred.detach().numpy(), melbourne.y_sets[1]))
 
 
 

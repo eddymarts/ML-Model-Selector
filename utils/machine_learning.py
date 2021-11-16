@@ -82,7 +82,6 @@ class ModelSelector:
                 for set in range(len(self.X_sets)):
                     mlflow.log_metric(f"{model}-{self.scores[score]['name']}-{set}", self.sk_tuned_models[model][self.scores[score]['name']][set])
 
-    
     def sk_flow(self):
         self.sk_tuned_models = {}
         if self.mlflow_tracking:
