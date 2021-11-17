@@ -3,6 +3,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import torch
 from torch.utils.data import *
+from device import get_device
 
 class NumpyDataset:
   def __init__(self, X, y, split=False, normalize=False, shuffle=True, seed=None):
@@ -81,9 +82,15 @@ class TorchDataSet(Dataset):
   """
   Class that implements torch.utils.data.Dataset
   """
-  def __init__(self, X, y=None, one_hot_target=False,
-              normalize=False, split=False, seed=None):
+  def __init__(self, X, y=None, one_hot_target=False, normalize=False,
+              split=False, dataloader_shuffle=False, seed=None):
     super().__init__()
+    self.device, self.num_cpu, self.num_gpu = get_device()
+
+    if self.device == "cuda:0":
+        self.num_workers = self.num_gpu
+    else:
+        self.num_workers = self.num_cpu
 
     if len(X.shape) > 1:
       self.n_features = X.shape[1]
@@ -111,8 +118,11 @@ class TorchDataSet(Dataset):
     if normalize:
       self.normalize()
 
+    self.split=split
     if split:
-      self.split(seed)
+      self.get_split(seed=seed)
+    
+    self.get_dataloaders(shuffle=dataloader_shuffle)
 
   def __getitem__(self, idx):
     if type(self.y) != type(None):
@@ -139,7 +149,7 @@ class TorchDataSet(Dataset):
     else:
       return (data - self.mean)/self.std
 
-  def split(self, seed, sizes=[0.7, 0.15, 0.15], shuffle=True):
+  def get_split(self, seed, sizes=[0.7, 0.15, 0.15], shuffle=True):
     lengths = [round(len(self)*size) for size in sizes]
     lengths[-1] = len(self) - sum(lengths[:-1])
 
@@ -148,3 +158,15 @@ class TorchDataSet(Dataset):
     else:
       self.splits = random_split(self, lengths,
         generator=torch.Generator().manual_seed(seed))
+  
+  def get_dataloaders(self, shuffle=False):
+    if self.split:
+      self.dataloaders = []
+      for idx, split in enumerate(self.splits):
+        if idx == 0:
+          shuffle = False
+        else:
+          shuffle = True
+        self.dataloaders.append(DataLoader(split, batch_size=16, shuffle=shuffle, num_workers=self.num_workers))
+    else:
+      self.dataloader = DataLoader(self, batch_size=16, shuffle=shuffle, num_workers=self.num_workers)

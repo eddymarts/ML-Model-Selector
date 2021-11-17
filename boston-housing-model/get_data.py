@@ -80,13 +80,13 @@ class BostonData(NumpyDataset):
             else:
                 shuffle = False
 
-            self.tensors[set] = TorchDataSet(X=self.X_sets[set], y=self.y_sets[set])
-            self.dataloaders[set] = DataLoader(self.tensors[set], batch_size=16,
-                shuffle=shuffle, num_workers=cpu_count()-1)
+            self.tensors[set] = TorchDataSet(X=self.X_sets[set], y=self.y_sets[set], dataloader_shuffle=shuffle)
 
     
 
 
 if __name__ == "__main__":
-    melbourne = MelbourneData(split=True, normalize=True)
-    print(melbourne.tensors[0][0])
+    boston = BostonData(split=True, normalize=True)
+    for X, y in boston.tensors[0].dataloader:
+        print(X, y)
+        sfsd
