@@ -3,8 +3,6 @@ pd.options.display.max_columns = None
 from sklearn.preprocessing import OrdinalEncoder
 from sklearn import datasets
 import plotly.express as px
-from torch.utils.data import DataLoader
-from multiprocessing import cpu_count
 import os, sys
 currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)

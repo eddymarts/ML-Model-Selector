@@ -2,21 +2,16 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
-from device import get_device
-
-from functools import partial
 import numpy as np
 import os
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data import random_split
-import torchvision
-import torchvision.transforms as transforms
 from ray import tune
-from ray.tune import CLIReporter
-from ray.tune.schedulers import ASHAScheduler
+import os, sys
+currentdir = os.path.dirname(os.path.realpath(__file__))
+parentdir = os.path.dirname(currentdir)
+sys.path.append(parentdir)
+from utils.device import get_device
 
 class NeuralNetwork(torch.nn.Module):
     """
@@ -30,8 +25,9 @@ class NeuralNetwork(torch.nn.Module):
     
     Methods created to match the ones used by Sci-kit Learn models.
     """
-    def __init__(self):
+    def __init__(self, lr = 0.001):
         super().__init__()
+        self.lr = lr
         self.device, self.num_cpu, self.num_gpu = get_device()
 
         if self.device == "cuda:0":
@@ -50,7 +46,7 @@ class NeuralNetwork(torch.nn.Module):
         """
         return self.layers(X)
 
-    def fit(self, train_load, test_load=None, optimiser=None, lr = 0.001, epochs=1000,
+    def fit(self, train_load, test_load=None, optimiser=None, epochs=1000,
             acceptable_error=0.001, return_loss=False, checkpoint_dir=None):
         """
         Optimises the model parameters for the given data.
@@ -63,7 +59,7 @@ class NeuralNetwork(torch.nn.Module):
         """
 
         if optimiser==None:
-            self.optimiser = torch.optim.SGD(self.parameters(), lr=lr)
+            self.optimiser = torch.optim.SGD(self.parameters(), lr=self.lr)
         else:
             self.optimiser = optimiser
 
@@ -125,7 +121,7 @@ class NeuralNetwork(torch.nn.Module):
             return {'training': mean_train_loss,
                     'validation': mean_validation_loss}
         
-    def predict(self, data_load):
+    def predict(self, data_load, return_y=False):
         """
         Predicts the value of an output for each row of X
         using the fitted model.
@@ -135,13 +131,25 @@ class NeuralNetwork(torch.nn.Module):
         Returns the predictions.
         """
         self.eval()
-        for idx, X in enumerate(data_load):
-            X = X.to(self.device)
-            if idx == 0:
-                y_hat = self(X)
+        for idx, data in enumerate(data_load):
+            if return_y:
+                X, y = data
+                X, y = X.to(self.device), y.to(self.device)
+                if idx == 0:
+                    y_hat = self(X)
+                    y_label = y
+                else:
+                    y_hat = torch.cat((y_hat, self(X)), dim=0)
+                    y_label = torch.cat((y_label, y), dim=0)
             else:
-                y_hat = torch.cat((y_hat, self(X)), dim=0)
+                X = data.to(self.device)
+                if idx == 0:
+                    y_hat = self(X)
+                else:
+                    y_hat = torch.cat((y_hat, self(X)), dim=0)
 
+        if return_y:
+            return y_label, y_hat
         return y_hat
 
 class NeuralNetworkRegression(NeuralNetwork):
@@ -200,7 +208,45 @@ class CustomNetRegression(NeuralNetworkRegression):
             layers.append(torch.nn.Dropout(p=dropout))
             current_neurons = next_neurons
         
-        print(current_neurons)
+        # print(current_neurons)
+
+        if batchnorm:
+            layers.append(torch.nn.BatchNorm1d(current_neurons))
+        layers.append(torch.nn.Linear(current_neurons, n_labels))
+
+        return layers
+
+class CustomBaseNetRegression(torch.nn.Module):
+    def __init__(self, n_features=11, n_labels=1, num_layers=10, neuron_incr=10, 
+                dropout=0.5, batchnorm=False):
+        super().__init__()
+        self.layers = torch.nn.ModuleList(self.get_layers(n_features, n_labels, num_layers,
+                                        neuron_incr, dropout, batchnorm))
+    
+    def forward(self, X):
+        for layer in self.layers:
+            X = layer(X)
+        return X
+    
+    def get_layers(self, n_features, n_labels, num_layers, neuron_incr, dropout, batchnorm):
+        current_neurons = n_features
+        layers = []
+
+        for layer in range(num_layers):
+            if layer <= round(num_layers/2):
+                next_neurons = current_neurons + neuron_incr
+            else:
+                next_neurons = current_neurons - neuron_incr
+
+            if batchnorm:
+                layers.append(torch.nn.BatchNorm1d(current_neurons))
+
+            layers.append(torch.nn.Linear(current_neurons, next_neurons))
+            layers.append(torch.nn.ReLU())
+            layers.append(torch.nn.Dropout(p=dropout))
+            current_neurons = next_neurons
+        
+        # print(current_neurons)
 
         if batchnorm:
             layers.append(torch.nn.BatchNorm1d(current_neurons))

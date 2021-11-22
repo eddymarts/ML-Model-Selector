@@ -3,22 +3,26 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import torch
 from torch.utils.data import *
-from device import get_device
+import os, sys
+currentdir = os.path.dirname(os.path.realpath(__file__))
+parentdir = os.path.dirname(currentdir)
+sys.path.append(parentdir)
+from utils.device import get_device
 
 class NumpyDataset:
   def __init__(self, X, y, split=False, normalize=False, shuffle=True, seed=None):
     if len(X.shape) > 1:
-      self.n_features = X.shape[1]
+      self.n_features = int(X.shape[1])
       self.X = X
     else:
-      self.n_features = 1
+      self.n_features = int(1)
       self.X = X.reshape(-1, self.n_features)
 
     if len(y.shape) > 1:
-      self.n_labels = y.shape[1]
+      self.n_labels = int(y.shape[1])
       self.y = y
     else:
-      self.n_labels = 1
+      self.n_labels = int(1)
       self.y = y.reshape(-1, self.n_labels)
 
     if split:
@@ -66,10 +70,10 @@ class NumpyDataset:
     for set in range(sets):
       X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=test_size, 
                                       shuffle=shuffle, random_state=seed)
-      X_sets[0] = X_train
-      X_sets[set+1] = X_test
-      y_sets[0] = np.array(y_train).reshape(-1,)
-      y_sets[set+1] = np.array(y_test).reshape(-1,)
+      X_sets[0] = X_train.astype(np.float32)
+      X_sets[set+1] = X_test.astype(np.float32)
+      y_sets[0] = np.array(y_train).astype(np.float32).reshape(-1, self.n_labels)
+      y_sets[set+1] = np.array(y_test).astype(np.float32).reshape(-1, self.n_labels)
       print(y_sets[0].shape, y_sets[set+1].shape)
     
     if X is None and y is None:
@@ -93,18 +97,18 @@ class TorchDataSet(Dataset):
         self.num_workers = self.num_cpu
 
     if len(X.shape) > 1:
-      self.n_features = X.shape[1]
+      self.n_features = int(X.shape[1])
       self.X = torch.Tensor(X).float()
     else:
-      self.n_features = 1
+      self.n_features = int(1)
       self.X = torch.Tensor(X.reshape(-1, self.n_features)).float()
 
     if type(y) != type(None):
       if len(y.shape) > 1:
-        self.n_labels = y.shape[1]
+        self.n_labels = int(y.shape[1])
         self.y = torch.Tensor(y).float()
       else:
-        self.n_labels = 1
+        self.n_labels = int(1)
         self.y = torch.Tensor(y.reshape(-1, self.n_labels)).float()
     else:
       self.y = None
