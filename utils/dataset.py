@@ -10,7 +10,7 @@ sys.path.append(parentdir)
 from utils.device import get_device
 
 class NumpyDataset:
-  def __init__(self, X, y, split=False, normalize=False, shuffle=True, seed=None):
+  def __init__(self, X, y, split=False, normalize=False, shuffle=True, seed=None, label_type='continuous'):
     if len(X.shape) > 1:
       self.n_features = int(X.shape[1])
       self.X = X
@@ -23,7 +23,18 @@ class NumpyDataset:
       self.y = y
     else:
       self.n_labels = int(1)
-      self.y = y.reshape(-1, self.n_labels)
+      if label_type == 'continous':
+        self.label_shape = (-1, self.n_labels)
+        self.label_type = np.float32
+      else:
+        self.label_shape = (-1,)
+        if label_type == 'binary':
+          self.label_type = np.float32
+        else:
+          self.label_type = np.longlong
+
+      self.y = y.astype(self.label_type).reshape(*self.label_shape)
+
 
     if split:
       self.split(seed=seed)
@@ -67,13 +78,14 @@ class NumpyDataset:
 
     X_sets = {}
     y_sets = {}
+    
     for set in range(sets):
       X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=test_size, 
                                       shuffle=shuffle, random_state=seed)
       X_sets[0] = X_train.astype(np.float32)
       X_sets[set+1] = X_test.astype(np.float32)
-      y_sets[0] = np.array(y_train).astype(np.float32).reshape(-1, self.n_labels)
-      y_sets[set+1] = np.array(y_test).astype(np.float32).reshape(-1, self.n_labels)
+      y_sets[0] = np.array(y_train).astype(self.label_type).reshape(*self.label_shape)
+      y_sets[set+1] = np.array(y_test).astype(self.label_type).reshape(*self.label_shape)
       print(y_sets[0].shape, y_sets[set+1].shape)
     
     if X is None and y is None:

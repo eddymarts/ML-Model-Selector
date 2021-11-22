@@ -253,3 +253,19 @@ class CustomBaseNetRegression(torch.nn.Module):
         layers.append(torch.nn.Linear(current_neurons, n_labels))
 
         return layers
+
+class CustomBaseNetBiClassification(CustomBaseNetRegression):
+    def __init__(self, n_features, n_labels, num_layers=10, neuron_incr=10,
+                dropout=0.5, batchnorm=False):
+        super().__init__(n_features, n_labels, num_layers=num_layers,
+                neuron_incr=neuron_incr, dropout=dropout, batchnorm=batchnorm)
+        self.layers = torch.nn.ModuleList(self.get_layers(n_features, n_labels, num_layers,
+                                        neuron_incr, dropout, batchnorm) + [torch.nn.Sigmoid()])
+
+class CustomBaseNetClassification(CustomBaseNetRegression):
+    def __init__(self, n_features, n_labels, num_layers=10, neuron_incr=10,
+                dropout=0.5, batchnorm=False):
+        super().__init__(n_features, n_labels, num_layers=num_layers,
+                neuron_incr=neuron_incr, dropout=dropout, batchnorm=batchnorm)
+        self.layers = torch.nn.ModuleList(self.get_layers(n_features, n_labels, num_layers,
+                                        neuron_incr, dropout, batchnorm) + [torch.nn.Softmax(1)])

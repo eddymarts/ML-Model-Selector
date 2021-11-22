@@ -9,10 +9,10 @@ parentdir = os.path.dirname(currentdir)
 sys.path.append(parentdir)
 from utils.dataset import NumpyDataset, TorchDataSet
 
-class BostonData(NumpyDataset):
+class BreastCancerData(NumpyDataset):
     def __init__(self, split=False, normalize=False, shuffle=True, seed=None):
-        X, y = datasets.load_boston(return_X_y=True)
-        super().__init__(X=X, y=y, split=split, normalize=normalize, shuffle=shuffle, seed=seed)
+        X, y = datasets.load_breast_cancer(return_X_y=True)
+        super().__init__(X=X, y=y, split=split, normalize=normalize, shuffle=shuffle, seed=seed, label_type='binary')
         # self.get_tensors()
     
     def get_tensors(self):
@@ -31,7 +31,7 @@ class BostonData(NumpyDataset):
 
 
 if __name__ == "__main__":
-    boston = BostonData(split=True, normalize=True)
-    for X, y in boston.tensors[0].dataloader:
-        print(X, y)
-        sfsd
+    breast_cancer = BreastCancerData(split=True, normalize=True)
+    y = breast_cancer.y_sets[0]
+    print(y.shape)
+    print(y.dtype)
