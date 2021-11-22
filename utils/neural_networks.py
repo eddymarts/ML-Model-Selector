@@ -254,7 +254,7 @@ class CustomBaseNetRegression(torch.nn.Module):
 
         return layers
 
-class CustomBaseNetBiClassification(CustomBaseNetRegression):
+class CustomBaseNetBinaryClassification(CustomBaseNetRegression):
     def __init__(self, n_features, n_labels, num_layers=10, neuron_incr=10,
                 dropout=0.5, batchnorm=False):
         super().__init__(n_features, n_labels, num_layers=num_layers,

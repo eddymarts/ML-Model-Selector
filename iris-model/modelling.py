@@ -1,4 +1,4 @@
-from get_data import BreastCancerData
+from get_data import IrisData
 from multiprocessing import cpu_count
 from sklearn.metrics import *
 import torch
@@ -11,14 +11,14 @@ sys.path.append(parentdir)
 from utils.machine_learning import ModelSelector
 
 if __name__ == "__main__":
-    breast_cancer = BreastCancerData(split=True, normalize=True, shuffle=True, seed=None)
+    iris = IrisData(split=True, normalize=True, shuffle=True, seed=None)
 
     sk_model_selector = ModelSelector(
-        name="Breast Cancer",
-        n_features=breast_cancer.n_features,
-        n_labels=breast_cancer.n_labels,
-        X_sets=breast_cancer.X_sets,
-        y_sets=breast_cancer.y_sets,
+        name="Iris",
+        n_features=iris.n_features,
+        n_labels=iris.n_labels,
+        X_sets=iris.X_sets,
+        y_sets=iris.y_sets,
         mode='classifier',
         # mlflow_tracking_uri=None,
         mlflow_tracking_uri="http://localhost:5000",

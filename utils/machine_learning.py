@@ -116,7 +116,7 @@ class ModelSelector:
                     #         'max_iter': [1000]
                     #         }
                     # },
-                    # "NeuralNetwork": {
+                    # NeuralNetRegressor.__name__: {
                     #     "model": NeuralNetRegressor(
                     #         module=CustomBaseNetRegression,
                     #         optimizer=_models.optim.SGD,
@@ -159,6 +159,7 @@ class ModelSelector:
                 self.torch_models = None
 
         elif mode == 'classifier':
+            self.n_classes = len(np.unique(self.y_sets[0]))
             self.scores = {
                 "first": {"name": "accuracy", "function": accuracy_score},
                 "second": {"name": "f1", "function": f1_score}
@@ -224,9 +225,9 @@ class ModelSelector:
                     #         'max_iter': [1000]
                     #         }
                     # },
-                    "NeuralNetwork": {
+                    NeuralNetBinaryClassifier.__name__: {
                         "model": NeuralNetBinaryClassifier(
-                            module=CustomBaseNetBiClassification,
+                            module=CustomBaseNetBinaryClassification,
                             optimizer=torch.optim.SGD,
                             max_epochs=3,
                             device=self.device
@@ -240,6 +241,28 @@ class ModelSelector:
                             'optimizer__nesterov': [False, True],
                             'module__n_features': [self.n_features],
                             'module__n_labels': [self.n_labels],
+                            'module__num_layers': [2**num for num in range(1, 3)],
+                            'module__neuron_incr': [num for num in range(2)],
+                            'module__dropout': [num/10 for num in range(2)],
+                            'module__batchnorm': [False, True]
+                            }
+                    },
+                    NeuralNetClassifier.__name__: {
+                        "model": NeuralNetClassifier(
+                            module=CustomBaseNetClassification,
+                            optimizer=torch.optim.SGD,
+                            max_epochs=3,
+                            device=self.device
+                            ),
+                        "parameters": {
+                            'batch_size': [2**batch for batch in range(4, 5)],
+                            'lr': [0.0001 * 10**num for num in range(2)],
+                            'optimizer__momentum': [num/10 for num in range(2)],
+                            'optimizer__dampening': [num/10 for num in range(2)],
+                            'optimizer__weight_decay': [0.0001 * 10**num for num in range(2)],
+                            'optimizer__nesterov': [False, True],
+                            'module__n_features': [self.n_features],
+                            'module__n_labels': [self.n_classes],
                             'module__num_layers': [2**num for num in range(1, 3)],
                             'module__neuron_incr': [num for num in range(2)],
                             'module__dropout': [num/10 for num in range(2)],
@@ -290,7 +313,7 @@ class ModelSelector:
             for set in range(len(self.X_sets)):
                 y_pred_sets[set] = self.sk_tuned_models[model]["best_model"].predict(self.X_sets[set])
 
-                if self.scores[score]["name"] == "Accuracy":
+                if self.scores[score]["name"] == "f1":
                     self.sk_tuned_models[model][self.scores[score]["name"]][set] = self.scores[score]["function"](
                         self.y_sets[set], y_pred_sets[set], average='weighted'
                     )
