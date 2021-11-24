@@ -16,26 +16,27 @@ import os, sys
 currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
 sys.path.append(parentdir)
-from utils.machine_learning import ModelSelector
+from utils.machine_learning import SKLearnModelSelector
 
 if __name__ == "__main__":
     boston = BostonData(split=True, normalize=True, shuffle=True, seed=None)
 
-    sk_model_selector = ModelSelector(
+    sk_model_selector = SKLearnModelSelector(
         name="Boston",
         n_features=boston.n_features,
         n_labels=boston.n_labels,
         X_sets=boston.X_sets,
         y_sets=boston.y_sets,
         mode='regressor',
+        models=["linear_reg", "knn_reg"],
         # mlflow_tracking_uri=None,
         mlflow_tracking_uri="http://localhost:5000",
         multiproc=False
         )
-    sk_model_selector.flow()
+    sk_model_selector.sk_flow()
 
     
-    # torch_model_selector = ModelSelector(
+    # torch_model_selector = SKLearnModelSelector(
     #     name="Boston",
     #     tensors=boston.tensors,
     #     torch_models=torch_models,
