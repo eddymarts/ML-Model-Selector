@@ -131,6 +131,7 @@ dmypy.json
 
 # Datasets
 *.csv
+datasets/
 
 # MLFlow
 *mlflow*

@@ -3,6 +3,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import torch
 from torch.utils.data import *
+from torchvision import transforms
 import os, sys
 currentdir = os.path.dirname(os.path.realpath(__file__))
 parentdir = os.path.dirname(currentdir)
@@ -17,24 +18,30 @@ class NumpyDataset:
     else:
       self.n_features = int(1)
       self.X = X.reshape(-1, self.n_features)
-
-    if len(y.shape) > 1:
-      self.n_labels = int(y.shape[1])
-      self.y = y
-    else:
-      self.n_labels = int(1)
-      if label_type == 'continous':
-        self.label_shape = (-1, self.n_labels)
-        self.label_type = np.float32
+    
+    if y is not None:
+      if len(y.shape) > 1:
+        self.n_labels = int(y.shape[1])
       else:
-        self.label_shape = (-1,)
+        self.n_labels = int(1)
+
+      if label_type == 'continuous':
+        self.label_type = np.float32
+        self.label_shape = (-1, self.n_labels)
+      else:
+        if self.n_labels > 1:
+          self.label_shape = (-1, self.n_labels)
+        else:
+          self.label_shape = (-1,)
+
         if label_type == 'binary':
           self.label_type = np.float32
         else:
           self.label_type = np.longlong
 
       self.y = y.astype(self.label_type).reshape(*self.label_shape)
-
+    else:
+      self.y = None
 
     if split:
       self.split(seed=seed)
@@ -99,7 +106,7 @@ class TorchDataSet(Dataset):
   Class that implements torch.utils.data.Dataset
   """
   def __init__(self, X, y=None, one_hot_target=False, normalize=False,
-              split=False, dataloader_shuffle=False, seed=None):
+              split=False, dataloader_shuffle=False, seed=None, label_type='continuous'):
     super().__init__()
     self.device, self.num_cpu, self.num_gpu = get_device()
 
@@ -115,28 +122,38 @@ class TorchDataSet(Dataset):
       self.n_features = int(1)
       self.X = torch.Tensor(X.reshape(-1, self.n_features)).float()
 
-    if type(y) != type(None):
+    if y is not None:
       if len(y.shape) > 1:
         self.n_labels = int(y.shape[1])
-        self.y = torch.Tensor(y).float()
       else:
         self.n_labels = int(1)
-        self.y = torch.Tensor(y.reshape(-1, self.n_labels)).float()
+      if label_type == 'continuous':
+        self.label_type = torch.float32
+        self.label_shape = (-1, self.n_labels)
+      else:
+        if self.n_labels > 1:
+          self.label_shape = (-1, self.n_labels)
+        else:
+          self.label_shape = (-1,)
+
+        if label_type == 'binary':
+          self.label_type = torch.float32
+        else:
+          self.label_type = torch.long
+
+      self.y = torch.Tensor(y).to(self.label_type).reshape(*self.label_shape)
     else:
       self.y = None
-
-    self.mean = torch.mean(self.X, axis=0)
-    self.std = torch.std(self.X, axis=0)
 
     if one_hot_target:
       self.y_oh = self.one_hot(self.y)
 
-    if normalize:
-      self.normalize()
-
     self.split=split
     if split:
       self.get_split(seed=seed)
+
+    if normalize:
+      self.normalize()
     
     self.get_dataloaders(shuffle=dataloader_shuffle)
 
@@ -158,12 +175,22 @@ class TorchDataSet(Dataset):
     return onehot
 
   def normalize(self, data=None):
+    if self.split:
+      self.std, self.mean = torch.std_mean(self.X_sets[0], unbiased=False)
+    else:
+      self.std, self.mean = torch.std_mean(self.X, unbiased=False)
+
+    self.normalize_tensor = transforms.Normalize((self.mean,), (self.std,))
     if data == None:
       self.X_raw = self.X
-      self.X = (self.X - self.mean)/self.std
+      self.X = self.normalize_tensor(self.X)
+      
+      if self.split:
+        for idx in range(len(self.splits)):
+          self.X_sets[idx] = self.normalize_tensor(self.X_sets[idx])
       return self.X
     else:
-      return (data - self.mean)/self.std
+      return self.normalize_tensor(data)
 
   def get_split(self, seed, sizes=[0.7, 0.15, 0.15], shuffle=True):
     lengths = [round(len(self)*size) for size in sizes]
@@ -174,6 +201,12 @@ class TorchDataSet(Dataset):
     else:
       self.splits = random_split(self, lengths,
         generator=torch.Generator().manual_seed(seed))
+    
+    self.X_sets = {}
+    self.y_sets = {}
+    for idx in range(len(self.splits)):
+      self.X_sets[idx] = self.X[self.splits[idx].indices]
+      self.y_sets[idx] = self.y[self.splits[idx].indices]
   
   def get_dataloaders(self, shuffle=False):
     if self.split:

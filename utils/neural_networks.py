@@ -269,3 +269,33 @@ class CustomBaseNetClassification(CustomBaseNetRegression):
                 neuron_incr=neuron_incr, dropout=dropout, batchnorm=batchnorm)
         self.layers = torch.nn.ModuleList(self.get_layers(n_features, n_labels, num_layers,
                                         neuron_incr, dropout, batchnorm) + [torch.nn.Softmax(1)])
+
+class Reshape(torch.nn.Module):
+    def __init__(self, *args):
+        super().__init__()
+        self.shape = args
+    
+    def forward(self, x):
+         return x.view(self.shape)
+
+class CNNClassifier(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = torch.nn.Sequential(
+            torch.nn.Conv2d(1, 10, kernel_size=5),
+            torch.nn.MaxPool2d(2),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(10, 20, kernel_size=5),
+            torch.nn.Dropout(),
+            torch.nn.MaxPool2d(2),
+            torch.nn.ReLU(),
+            Reshape(-1, 320),
+            torch.nn.Linear(320, 50),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(),
+            torch.nn.Linear(50, 10),
+            torch.nn.LogSoftmax(1)
+        )
+    
+    def forward(self, X):
+        return self.layers(X)

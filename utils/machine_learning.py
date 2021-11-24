@@ -32,21 +32,19 @@ from utils.multiproc import parmap
 from utils.device import get_device
 from utils.neural_networks import *
 
-class ModelSelector:
-    def __init__(self, name, X_sets=None, y_sets=None, tensors=None, n_features=None, n_labels=None,
+class SKLearnModelSelector:
+    def __init__(self, name, X_sets=None, y_sets=None, n_features=None, n_labels=None,
                 mode='regressor', mlflow_tracking_uri=None, multiproc=False) -> None:
         self.X_sets = X_sets
         self.y_sets = y_sets
-        self.tensors = tensors
         self.name = name
         self.n_features=n_features
         self.n_labels=n_labels
         self.multiprocess = multiproc
         self.sk_max_score = np.NINF
-        self.torch_max_score = np.NINF
         self.mlflow_tracking = False
         self.device, self.num_cpu, self.num_gpu = get_device()
-        self.get_models_and_metrics(mode, sklearn_models=True)
+        self.get_sk_models_and_metrics(mode)
         if self.device == "cuda:0":
             self.num_workers = self.num_gpu
         else:
@@ -58,105 +56,86 @@ class ModelSelector:
             mlflow.start_run()
             self.mlflow_tracking = True
     
-    def get_models_and_metrics(self, mode, sklearn_models=False, torch_models=False):
+    def get_sk_models_and_metrics(self, mode):
         if mode == 'regressor':
             self.scores = {
                 "first": {"name": "mse", "function": mean_squared_error},
                 "second": {"name": "r2", "function": r2_score}
             }
 
-            if sklearn_models:
-                self.sk_models = {
-                    LinearRegression.__name__: {
-                        "model": LinearRegression(),
-                        "parameters": {'fit_intercept': [True, False]}
-                    }
-                    # KNeighborsRegressor.__name__: {
-                    #     "model": KNeighborsRegressor(),
-                    #     "parameters": {
-                    #         'n_neighbors': list(range(10, 30)), 
-                    #         'weights': ['uniform', 'distance']
-                    #         }
-                    # },
-                    # SVR.__name__: {
-                    #     "model": SVR(),
-                    #     "parameters": {
-                    #         'kernel': ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed'], 
-                    #         'degree': list(range(2, 10)),
-                    #         'gamma': ['scale', 'auto'],
-                    #         'coef0': list(range(100)),
-                    #         'C': [num/1 for num in range(10)],
-                    #         'epsilon': [num/100 for num in range(10)],
-                    #         'shrinking': [False, True]
-                    #         }
-                    # },
-                    # DecisionTreeRegressor.__name__: {
-                    #     "model": DecisionTreeRegressor(),
-                    #     "parameters": {
-                    #         'min_samples_split': list(range(2, 10)), 
-                    #         'min_samples_leaf': list(range(1, 10)),
-                    #         'min_weight_fraction_leaf': [num for num in range(5)]
-                    #         }
-                    # },
-                    # RandomForestRegressor.__name__: {
-                    #     "model": RandomForestRegressor(),
-                    #     "parameters": {
-                    #         'n_estimators': [num*10 for num in range(10, 11)],
-                    #         'min_samples_split': list(range(2, 4)), 
-                    #         'min_samples_leaf': list(range(1, 3)),
-                    #         'min_weight_fraction_leaf': [num/10 for num in range(2)]
-                    #         }
-                    # },
-                    # MLPRegressor.__name__: {
-                    #     "model": MLPRegressor(),
-                    #     "parameters": {
-                    #         'hidden_layer_sizes': [(100, 100, 100, 100, 100)],
-                    #         'activation': ['identity', 'logistic', 'tanh', 'relu'],
-                    #         'alpha': [num/10000 for num in range(1, 100)],
-                    #         'max_iter': [1000]
-                    #         }
-                    # },
-                    # NeuralNetRegressor.__name__: {
-                    #     "model": NeuralNetRegressor(
-                    #         module=CustomBaseNetRegression,
-                    #         optimizer=_models.optim.SGD,
-                    #         max_epochs=3,
-                    #         device=self.device
-                    #         ),
-                    #     "parameters": {
-                    #         'batch_size': [2**batch for batch in range(4, 5)],
-                    #         'lr': [0.0001 * 10**num for num in range(2)],
-                    #         'optimizer__momentum': [num/10 for num in range(2)],
-                    #         'optimizer__dampening': [num/10 for num in range(2)],
-                    #         'optimizer__weight_decay': [0.0001 * 10**num for num in range(2)],
-                    #         'optimizer__nesterov': [False, True],
-                    #         'module__n_features': [self.n_features],
-                    #         'module__n_labels': [self.n_labels],
-                    #         'module__num_layers': [2**num for num in range(1, 3)],
-                    #         'module__neuron_incr': [num for num in range(2)],
-                    #         'module__dropout': [num/10 for num in range(2)],
-                    #         'module__batchnorm': [False, True]
-                    #         }
-                    # }
+            self.sk_models = {
+                LinearRegression.__name__: {
+                    "model": LinearRegression(),
+                    "parameters": {'fit_intercept': [True, False]}
                 }
-            else:
-                self.sk_models = None
-            
-            if torch_models:
-                self.torch_models = {
-                    CustomNetRegression.__name__: {
-                        "model": CustomNetRegression,
-                        "parameters": {
-                            "num_layers": tune.grid_search([x for x in range(1, 3)]),
-                            "neuron_incr": tune.grid_search([x for x in range(1, 3)]),
-                            "dropout": tune.grid_search([x/10 for x in range(1, 3)]),
-                            "batchnorm": tune.grid_search([False, True]),
-                            "learning_rate": tune.grid_search([x/100 for x in range(1, 3)])
-                        }
-                    }
-                }
-            else:
-                self.torch_models = None
+                # KNeighborsRegressor.__name__: {
+                #     "model": KNeighborsRegressor(),
+                #     "parameters": {
+                #         'n_neighbors': list(range(10, 30)), 
+                #         'weights': ['uniform', 'distance']
+                #         }
+                # },
+                # SVR.__name__: {
+                #     "model": SVR(),
+                #     "parameters": {
+                #         'kernel': ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed'], 
+                #         'degree': list(range(2, 10)),
+                #         'gamma': ['scale', 'auto'],
+                #         'coef0': list(range(100)),
+                #         'C': [num/1 for num in range(10)],
+                #         'epsilon': [num/100 for num in range(10)],
+                #         'shrinking': [False, True]
+                #         }
+                # },
+                # DecisionTreeRegressor.__name__: {
+                #     "model": DecisionTreeRegressor(),
+                #     "parameters": {
+                #         'min_samples_split': list(range(2, 10)), 
+                #         'min_samples_leaf': list(range(1, 10)),
+                #         'min_weight_fraction_leaf': [num for num in range(5)]
+                #         }
+                # },
+                # RandomForestRegressor.__name__: {
+                #     "model": RandomForestRegressor(),
+                #     "parameters": {
+                #         'n_estimators': [num*10 for num in range(10, 11)],
+                #         'min_samples_split': list(range(2, 4)), 
+                #         'min_samples_leaf': list(range(1, 3)),
+                #         'min_weight_fraction_leaf': [num/10 for num in range(2)]
+                #         }
+                # },
+                # MLPRegressor.__name__: {
+                #     "model": MLPRegressor(),
+                #     "parameters": {
+                #         'hidden_layer_sizes': [(100, 100, 100, 100, 100)],
+                #         'activation': ['identity', 'logistic', 'tanh', 'relu'],
+                #         'alpha': [num/10000 for num in range(1, 100)],
+                #         'max_iter': [1000]
+                #         }
+                # },
+                # NeuralNetRegressor.__name__: {
+                #     "model": NeuralNetRegressor(
+                #         module=CustomBaseNetRegression,
+                #         optimizer=_models.optim.SGD,
+                #         max_epochs=3,
+                #         device=self.device
+                #         ),
+                #     "parameters": {
+                #         'batch_size': [2**batch for batch in range(4, 5)],
+                #         'lr': [0.0001 * 10**num for num in range(2)],
+                #         'optimizer__momentum': [num/10 for num in range(2)],
+                #         'optimizer__dampening': [num/10 for num in range(2)],
+                #         'optimizer__weight_decay': [0.0001 * 10**num for num in range(2)],
+                #         'optimizer__nesterov': [False, True],
+                #         'module__n_features': [self.n_features],
+                #         'module__n_labels': [self.n_labels],
+                #         'module__num_layers': [2**num for num in range(1, 3)],
+                #         'module__neuron_incr': [num for num in range(2)],
+                #         'module__dropout': [num/10 for num in range(2)],
+                #         'module__batchnorm': [False, True]
+                #         }
+                # }
+            }
 
         elif mode == 'classifier':
             self.n_classes = len(np.unique(self.y_sets[0]))
@@ -165,131 +144,126 @@ class ModelSelector:
                 "second": {"name": "f1", "function": f1_score}
             }
 
-            if sklearn_models:
-                self.sk_models = {
-                    # LogisticRegression.__name__: {
-                    #     "model": LogisticRegression(),
-                    #     "parameters": {
-                    #         'fit_intercept': [True, False],
-                    #         # 'penalty': ["none"],
-                    #         # 'l1_ratio': [0],
-                    #         'max_iter': [1000]
-                    #         }                            
-                    # },
-                    # KNeighborsClassifier.__name__: {
-                    #     "model": KNeighborsClassifier(),
-                    #     "parameters": {
-                    #         'n_neighbors': list(range(10, 30)), 
-                    #         'weights': ['uniform', 'distance']
-                    #         }
-                    # }
-                    # SVC.__name__: {
-                    #     "model": SVC(),
-                    #     "parameters": {
-                    #         'kernel': ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed'], 
-                    #         'degree': list(range(2, 10)),
-                    #         'gamma': ['scale', 'auto'],
-                    #         'coef0': list(range(100)),
-                    #         'C': [num/1 for num in range(10)],
-                    #         'epsilon': [num/100 for num in range(10)],
-                    #         'shrinking': [False, True],
-                    #         'class_weight': ["balanced", None]
-                    #         }
-                    # },
-                    # DecisionTreeClassifier.__name__: {
-                    #     "model": DecisionTreeClassifier(),
-                    #     "parameters": {
-                    #         'criterion': ["gini", "entropy"],
-                    #         'min_samples_split': list(range(2, 10)), 
-                    #         'min_samples_leaf': list(range(1, 10)),
-                    #         'min_weight_fraction_leaf': [num for num in range(5)]
-                    #         }
-                    # },
-                    # RandomForestClassifier.__name__: {
-                    #     "model": RandomForestClassifier(),
-                    #     "parameters": {
-                    #         'n_estimators': [num*10 for num in range(10, 11)],
-                    #         'criterion': ["gini", "entropy"],
-                    #         'min_samples_split': list(range(2, 4)), 
-                    #         'min_samples_leaf': list(range(1, 3)),
-                    #         'min_weight_fraction_leaf': [num/10 for num in range(2)],
-                    #         'class_weight': ["balanced", "balanced_subsample", None]
-                    #         }
-                    # },
-                    # MLPClassifier.__name__: {
-                    #     "model": MLPClassifier(),
-                    #     "parameters": {
-                    #         'hidden_layer_sizes': [(100, 100, 100, 100, 100)],
-                    #         'activation': ['identity', 'logistic', 'tanh', 'relu'],
-                    #         'alpha': [num/10000 for num in range(1, 100)],
-                    #         'max_iter': [1000]
-                    #         }
-                    # },
-                    NeuralNetBinaryClassifier.__name__: {
-                        "model": NeuralNetBinaryClassifier(
-                            module=CustomBaseNetBinaryClassification,
-                            optimizer=torch.optim.SGD,
-                            max_epochs=3,
-                            device=self.device
-                            ),
-                        "parameters": {
-                            'batch_size': [2**batch for batch in range(4, 5)],
-                            'lr': [0.0001 * 10**num for num in range(2)],
-                            'optimizer__momentum': [num/10 for num in range(2)],
-                            'optimizer__dampening': [num/10 for num in range(2)],
-                            'optimizer__weight_decay': [0.0001 * 10**num for num in range(2)],
-                            'optimizer__nesterov': [False, True],
-                            'module__n_features': [self.n_features],
-                            'module__n_labels': [self.n_labels],
-                            'module__num_layers': [2**num for num in range(1, 3)],
-                            'module__neuron_incr': [num for num in range(2)],
-                            'module__dropout': [num/10 for num in range(2)],
-                            'module__batchnorm': [False, True]
-                            }
-                    },
-                    NeuralNetClassifier.__name__: {
-                        "model": NeuralNetClassifier(
-                            module=CustomBaseNetClassification,
-                            optimizer=torch.optim.SGD,
-                            max_epochs=3,
-                            device=self.device
-                            ),
-                        "parameters": {
-                            'batch_size': [2**batch for batch in range(4, 5)],
-                            'lr': [0.0001 * 10**num for num in range(2)],
-                            'optimizer__momentum': [num/10 for num in range(2)],
-                            'optimizer__dampening': [num/10 for num in range(2)],
-                            'optimizer__weight_decay': [0.0001 * 10**num for num in range(2)],
-                            'optimizer__nesterov': [False, True],
-                            'module__n_features': [self.n_features],
-                            'module__n_labels': [self.n_classes],
-                            'module__num_layers': [2**num for num in range(1, 3)],
-                            'module__neuron_incr': [num for num in range(2)],
-                            'module__dropout': [num/10 for num in range(2)],
-                            'module__batchnorm': [False, True]
-                            }
-                    }
-                }
-            else:
-                self.sk_models = None
-            
-            if torch_models:
-                self.torch_models = {
-                    CustomNetRegression.__name__: {
-                        "model": CustomNetRegression,
-                        "parameters": {
-                            "num_layers": tune.grid_search([x for x in range(1, 3)]),
-                            "neuron_incr": tune.grid_search([x for x in range(1, 3)]),
-                            "dropout": tune.grid_search([x/10 for x in range(1, 3)]),
-                            "batchnorm": tune.grid_search([False, True]),
-                            "learning_rate": tune.grid_search([x/100 for x in range(1, 3)])
+            self.sk_models = {
+                # LogisticRegression.__name__: {
+                #     "model": LogisticRegression(),
+                #     "parameters": {
+                #         'fit_intercept': [True, False],
+                #         # 'penalty': ["none"],
+                #         # 'l1_ratio': [0],
+                #         'max_iter': [1000]
+                #         }                            
+                # },
+                # KNeighborsClassifier.__name__: {
+                #     "model": KNeighborsClassifier(),
+                #     "parameters": {
+                #         'n_neighbors': list(range(10, 30)), 
+                #         'weights': ['uniform', 'distance']
+                #         }
+                # }
+                # SVC.__name__: {
+                #     "model": SVC(),
+                #     "parameters": {
+                #         'kernel': ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed'], 
+                #         'degree': list(range(2, 10)),
+                #         'gamma': ['scale', 'auto'],
+                #         'coef0': list(range(100)),
+                #         'C': [num/1 for num in range(10)],
+                #         'epsilon': [num/100 for num in range(10)],
+                #         'shrinking': [False, True],
+                #         'class_weight': ["balanced", None]
+                #         }
+                # },
+                # DecisionTreeClassifier.__name__: {
+                #     "model": DecisionTreeClassifier(),
+                #     "parameters": {
+                #         'criterion': ["gini", "entropy"],
+                #         'min_samples_split': list(range(2, 10)), 
+                #         'min_samples_leaf': list(range(1, 10)),
+                #         'min_weight_fraction_leaf': [num for num in range(5)]
+                #         }
+                # },
+                # RandomForestClassifier.__name__: {
+                #     "model": RandomForestClassifier(),
+                #     "parameters": {
+                #         'n_estimators': [num*10 for num in range(10, 11)],
+                #         'criterion': ["gini", "entropy"],
+                #         'min_samples_split': list(range(2, 4)), 
+                #         'min_samples_leaf': list(range(1, 3)),
+                #         'min_weight_fraction_leaf': [num/10 for num in range(2)],
+                #         'class_weight': ["balanced", "balanced_subsample", None]
+                #         }
+                # },
+                # MLPClassifier.__name__: {
+                #     "model": MLPClassifier(),
+                #     "parameters": {
+                #         'hidden_layer_sizes': [(100, 100, 100, 100, 100)],
+                #         'activation': ['identity', 'logistic', 'tanh', 'relu'],
+                #         'alpha': [num/10000 for num in range(1, 100)],
+                #         'max_iter': [1000]
+                #         }
+                # },
+                # NeuralNetBinaryClassifier.__name__: {
+                #     "model": NeuralNetBinaryClassifier(
+                #         module=CustomBaseNetBinaryClassification,
+                #         optimizer=torch.optim.SGD,
+                #         max_epochs=3,
+                #         device=self.device
+                #         ),
+                #     "parameters": {
+                #         'batch_size': [2**batch for batch in range(4, 5)],
+                #         'lr': [0.0001 * 10**num for num in range(2)],
+                #         'optimizer__momentum': [num/10 for num in range(2)],
+                #         'optimizer__dampening': [num/10 for num in range(2)],
+                #         'optimizer__weight_decay': [0.0001 * 10**num for num in range(2)],
+                #         'optimizer__nesterov': [False, True],
+                #         'module__n_features': [self.n_features],
+                #         'module__n_labels': [self.n_labels],
+                #         'module__num_layers': [2**num for num in range(1, 3)],
+                #         'module__neuron_incr': [num for num in range(2)],
+                #         'module__dropout': [num/10 for num in range(2)],
+                #         'module__batchnorm': [False, True]
+                #         }
+                # },
+                # NeuralNetClassifier.__name__: {
+                #     "model": NeuralNetClassifier(
+                #         module=CustomBaseNetClassification,
+                #         optimizer=torch.optim.SGD,
+                #         max_epochs=3,
+                #         device=self.device
+                #         ),
+                #     "parameters": {
+                #         'batch_size': [2**batch for batch in range(4, 5)],
+                #         'lr': [0.0001 * 10**num for num in range(2)],
+                #         'optimizer__momentum': [num/10 for num in range(2)],
+                #         'optimizer__dampening': [num/10 for num in range(2)],
+                #         'optimizer__weight_decay': [0.0001 * 10**num for num in range(2)],
+                #         'optimizer__nesterov': [False, True],
+                #         'module__n_features': [self.n_features],
+                #         'module__n_labels': [self.n_classes],
+                #         'module__num_layers': [2**num for num in range(1, 3)],
+                #         'module__neuron_incr': [num for num in range(2)],
+                #         'module__dropout': [num/10 for num in range(2)],
+                #         'module__batchnorm': [False, True]
+                #         }
+                # },
+                CNNClassifier.__name__: {
+                    "model": NeuralNetClassifier(
+                        module=CNNClassifier,
+                        optimizer=torch.optim.SGD,
+                        max_epochs=3,
+                        device=self.device
+                        ),
+                    "parameters": {
+                        'batch_size': [2**batch for batch in range(4, 5)],
+                        'lr': [0.0001 * 10**num for num in range(1)]
+                        # 'optimizer__momentum': [num/10 for num in range(2)],
+                        # 'optimizer__dampening': [num/10 for num in range(2)],
+                        # 'optimizer__weight_decay': [0.0001 * 10**num for num in range(2)],
+                        # 'optimizer__nesterov': [False, True]
                         }
-                    }
                 }
-            else:
-                self.torch_models = None
-
-
+            }
         
     def sk_tune(self, model):
         """ Turns hyperparameters of the model. """
@@ -344,6 +318,116 @@ class ModelSelector:
         self.sk_tuned_models[model]["validation_scores"] = np.mean(validation_scores, axis=1)
         self.sk_tuned_models[model]["fit_times"] = fit_times
         self.sk_tuned_models[model]["score_times"] = score_times
+    
+    def sk_experiment(self, model, sklearn=False, torch=False):
+        self.sk_tune(model)
+        self.sk_score(model)
+        model_type = "sklearn"
+        tuned_model = self.sk_tuned_models[model]
+
+        if self.mlflow_tracking:
+            mlflow.log_metric(f"{model}-tune_time", tuned_model["tune_time"])
+            mlflow.log_metric(f"{model}-fit_time", tuned_model["fit_time"])
+            mlflow.sklearn.log_model(
+                sk_model=tuned_model["best_model"],
+                artifact_path=f'{self.name}/{model_type}',
+                registered_model_name=f"{self.name}-{model}"
+                )
+            
+            for param in tuned_model["best_parameters"].keys():
+                mlflow.log_param(f"{model}-{param}", tuned_model["best_parameters"][param])
+
+            for score in self.scores.keys():
+                for set in range(len(self.X_sets)):
+                    mlflow.log_metric(f"{model}-{self.scores[score]['name']}-{set}", tuned_model[self.scores[score]['name']][set])
+            
+            for idx, size in enumerate(self.sk_tuned_models[model]["train_sizes"]):
+                mlflow.log_metric(
+                    key=f"{model}-{self.scores['first']['name']}-train",
+                    value=self.sk_tuned_models[model]["train_scores"][idx],
+                    step=size
+                    )
+                mlflow.log_metric(
+                    key=f"{model}-{self.scores['first']['name']}-validation",
+                    value=self.sk_tuned_models[model]["validation_scores"][idx],
+                    step=size)
+
+    def sk_flow(self):
+        self.sk_tuned_models = {}
+        
+        if self.multiprocess:
+            parmap(lambda model: self.sk_experiment(model), list(self.sk_models.keys()))
+        else:
+            for model in self.sk_models.keys():
+                self.sk_experiment(model)
+
+
+        if self.mlflow_tracking:
+            mlflow.log_param("BestModel", self.sk_best_model["name"])
+            mlflow.end_run()
+
+class TorchModelSelector:
+    def __init__(self, name, tensors=None, n_features=None, n_labels=None,
+                mode='regressor', mlflow_tracking_uri=None, multiproc=False) -> None:
+        self.tensors = tensors
+        self.name = name
+        self.n_features=n_features
+        self.n_labels=n_labels
+        self.multiprocess = multiproc
+        self.torch_max_score = np.NINF
+        self.mlflow_tracking = False
+        self.device, self.num_cpu, self.num_gpu = get_device()
+        self.get_torch_models_and_metrics(mode,)
+        if self.device == "cuda:0":
+            self.num_workers = self.num_gpu
+        else:
+            self.num_workers = self.num_cpu
+
+        if type(mlflow_tracking_uri) != type(None):
+            mlflow.set_tracking_uri(mlflow_tracking_uri)
+            mlflow.set_experiment(self.name)
+            mlflow.start_run()
+            self.mlflow_tracking = True
+    
+    def get_torch_models_and_metrics(self, mode):
+        if mode == 'regressor':
+            self.scores = {
+                "first": {"name": "mse", "function": mean_squared_error},
+                "second": {"name": "r2", "function": r2_score}
+            }
+
+            self.torch_models = {
+                CustomNetRegression.__name__: {
+                    "model": CustomNetRegression,
+                    "parameters": {
+                        "num_layers": tune.grid_search([x for x in range(1, 3)]),
+                        "neuron_incr": tune.grid_search([x for x in range(1, 3)]),
+                        "dropout": tune.grid_search([x/10 for x in range(1, 3)]),
+                        "batchnorm": tune.grid_search([False, True]),
+                        "learning_rate": tune.grid_search([x/100 for x in range(1, 3)])
+                    }
+                }
+            }
+
+        elif mode == 'classifier':
+            self.n_classes = len(np.unique(self.y_sets[0]))
+            self.scores = {
+                "first": {"name": "accuracy", "function": accuracy_score},
+                "second": {"name": "f1", "function": f1_score}
+            }
+
+            self.torch_models = {
+                CustomNetRegression.__name__: {
+                    "model": CustomNetRegression,
+                    "parameters": {
+                        "num_layers": tune.grid_search([x for x in range(1, 3)]),
+                        "neuron_incr": tune.grid_search([x for x in range(1, 3)]),
+                        "dropout": tune.grid_search([x/10 for x in range(1, 3)]),
+                        "batchnorm": tune.grid_search([False, True]),
+                        "learning_rate": tune.grid_search([x/100 for x in range(1, 3)])
+                    }
+                }
+            }
         
     def torch_train(self, config, model):
         """ Turns hyperparameters of the model. """
@@ -443,8 +527,34 @@ class ModelSelector:
         if self.torch_tuned_models[model][self.scores['first']['name']][1] > self.torch_max_score:
             self.torch_best_model = self.torch_tuned_models[model]
             self.torch_best_model["name"] = model
+
+class ModelSelector:
+    def __init__(self, name, X_sets=None, y_sets=None, tensors=None, n_features=None, n_labels=None,
+                mode='regressor', mlflow_tracking_uri=None, multiproc=False) -> None:
+        self.X_sets = X_sets
+        self.y_sets = y_sets
+        self.tensors = tensors
+        self.name = name
+        self.n_features=n_features
+        self.n_labels=n_labels
+        self.multiprocess = multiproc
+        self.sk_max_score = np.NINF
+        self.torch_max_score = np.NINF
+        self.mlflow_tracking = False
+        self.device, self.num_cpu, self.num_gpu = get_device()
+        self.get_models_and_metrics(mode, sklearn_models=True)
+        if self.device == "cuda:0":
+            self.num_workers = self.num_gpu
+        else:
+            self.num_workers = self.num_cpu
+
+        if type(mlflow_tracking_uri) != type(None):
+            mlflow.set_tracking_uri(mlflow_tracking_uri)
+            mlflow.set_experiment(self.name)
+            mlflow.start_run()
+            self.mlflow_tracking = True
     
-    def experiment(self, model, sklearn=False, torch=False):
+    def sk_experiment(self, model, sklearn=False, torch=False):
         if sklearn:
             self.sk_tune(model)
             self.sk_score(model)
@@ -498,16 +608,16 @@ class ModelSelector:
         
         if self.multiprocess:
             if sklearn:
-                parmap(lambda model: self.experiment(model, sklearn=sklearn, torch=torch), list(self.sk_models.keys()))
+                parmap(lambda model: self.sk_experiment(model, sklearn=sklearn, torch=torch), list(self.sk_models.keys()))
             if torch:
-                parmap(lambda model: self.experiment(model, sklearn=sklearn, torch=torch), list(self.torch_models.keys()))
+                parmap(lambda model: self.sk_experiment(model, sklearn=sklearn, torch=torch), list(self.torch_models.keys()))
         else:
             if sklearn:
                 for model in self.sk_models.keys():
-                    self.experiment(model, sklearn=True)
+                    self.sk_experiment(model, sklearn=True)
             if torch:
                 for model in self.torch_models.keys():
-                    self.experiment(model, torch=True)
+                    self.sk_experiment(model, torch=True)
         
         if sklearn and torch:
             if self.torch_best_model[self.scores['first']['name']][1] > self.sk_best_model[self.scores['first']['name']][1]:
