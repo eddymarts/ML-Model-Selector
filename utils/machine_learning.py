@@ -32,74 +32,7 @@ from utils.multiproc import parmap
 from utils.device import get_device
 from utils.neural_networks import *
 
-def sk_tune(name, model, scores, X_sets, y_sets, mlflow_tracking, model_type="sklearn"):
-    """ Turns hyperparameters of the model. """
-    def sk_score(model, model_name, scores, X_sets, y_sets, mlflow_tracking):
-        """ Returns the score of the tuned model for every set of the data. """
-        for score in scores.keys():
-            for set in range(len(X_sets)):
-                y_pred = model.predict(X_sets[set])
 
-                if scores[score]["name"] == "f1":
-                    metric = scores[score]["function"](
-                        y_sets[set], y_pred, average='weighted'
-                    )
-                else:
-                    metric = scores[score]["function"](
-                        y_sets[set], y_pred
-                    )
-                print(f"{model_name} - dataset {set}: {scores[score]['name']} = {metric}")
-
-                if mlflow_tracking:
-                    mlflow.log_metric(f"{model_name}-{scores[score]['name']}-{set}", metric)
-
-    def log_train_curve(model, model_name, scores, X_sets, y_sets):
-        train_sizes, train_scores, validation_scores, fit_times, score_times = learning_curve(
-            estimator=model,
-            X=X_sets[0],
-            y=y_sets[0],
-            train_sizes=np.linspace(0.1, 1.0, 10),
-            scoring=scores["first"]["name"],
-            return_times=True
-        )
-
-        mean_train_scores = np.mean(train_scores, axis=1)
-        mean_validation_scores = np.mean(validation_scores, axis=1)
-
-        for idx, size in enumerate(train_sizes):
-            mlflow.log_metric(
-                key=f"{model_name}-{scores['first']['name']}-train",
-                value=mean_train_scores[idx],
-                step=size
-                )
-            mlflow.log_metric(
-                key=f"{model_name}-{scores['first']['name']}-validation",
-                value=mean_validation_scores[idx],
-                step=size)
-    tuned_model =  GridSearchCV(
-        estimator=model["model"], param_grid=model["parameters"]
-        )
-    tuning_start = time.time()
-    tuned_model.fit(X=X_sets[0], y=y_sets[0])
-    tuning_end = time.time()
-    tune_time = tuning_end - tuning_start
-    print(f"{model['name']} - parameters: {tuned_model.best_params_}")
-
-    sk_score(tuned_model.best_estimator_, model['name'], scores, X_sets, y_sets, mlflow_tracking)
-
-    if mlflow_tracking:  
-        mlflow.log_metric(f"{model['name']}-tune_time", tune_time)
-        mlflow.log_metric(f"{model['name']}-fit_time", tuned_model.refit_time_)
-        mlflow.sklearn.log_model(
-            sk_model=tuned_model.best_estimator_,
-            artifact_path=f'{name}/{model_type}',
-            registered_model_name=f"{name}-{model['name']}"
-            )
-        
-        for param in tuned_model.best_params_.keys():
-            mlflow.log_param(f"{model['name']}-{param}", tuned_model.best_params_[param])
-        
-        log_train_curve(tuned_model.best_estimator_, model['name'], scores, X_sets, y_sets)
 
 class SKLearnModelSelector:
     def __init__(self, name, models=None, X_sets=None, y_sets=None, n_features=None, n_labels=None,
@@ -360,6 +293,74 @@ class SKLearnModelSelector:
         return sk_models
 
     def sk_flow(self):
+        def sk_tune(name, model, scores, X_sets, y_sets, mlflow_tracking, model_type="sklearn"):
+            """ Turns hyperparameters of the model. """
+            def sk_score(model, model_name, scores, X_sets, y_sets, mlflow_tracking):
+                """ Returns the score of the tuned model for every set of the data. """
+                for score in scores.keys():
+                    for set in range(len(X_sets)):
+                        y_pred = model.predict(X_sets[set])
+
+                        if scores[score]["name"] == "f1":
+                            metric = scores[score]["function"](
+                                y_sets[set], y_pred, average='weighted'
+                            )
+                        else:
+                            metric = scores[score]["function"](
+                                y_sets[set], y_pred
+                            )
+                        print(f"{model_name} - dataset {set}: {scores[score]['name']} = {metric}")
+
+                        if mlflow_tracking:
+                            mlflow.log_metric(f"{model_name}-{scores[score]['name']}-{set}", metric)
+
+            def log_train_curve(model, model_name, scores, X_sets, y_sets):
+                train_sizes, train_scores, validation_scores, fit_times, score_times = learning_curve(
+                    estimator=model,
+                    X=X_sets[0],
+                    y=y_sets[0],
+                    train_sizes=np.linspace(0.1, 1.0, 10),
+                    scoring=scores["first"]["name"],
+                    return_times=True
+                )
+
+                mean_train_scores = np.mean(train_scores, axis=1)
+                mean_validation_scores = np.mean(validation_scores, axis=1)
+
+                for idx, size in enumerate(train_sizes):
+                    mlflow.log_metric(
+                        key=f"{model_name}-{scores['first']['name']}-train",
+                        value=mean_train_scores[idx],
+                        step=size
+                        )
+                    mlflow.log_metric(
+                        key=f"{model_name}-{scores['first']['name']}-validation",
+                        value=mean_validation_scores[idx],
+                        step=size)
+            tuned_model =  GridSearchCV(
+                estimator=model["model"], param_grid=model["parameters"]
+                )
+            tuning_start = time.time()
+            tuned_model.fit(X=X_sets[0], y=y_sets[0])
+            tuning_end = time.time()
+            tune_time = tuning_end - tuning_start
+            print(f"{model['name']} - parameters: {tuned_model.best_params_}")
+
+            sk_score(tuned_model.best_estimator_, model['name'], scores, X_sets, y_sets, mlflow_tracking)
+
+            if mlflow_tracking:  
+                mlflow.log_metric(f"{model['name']}-tune_time", tune_time)
+                mlflow.log_metric(f"{model['name']}-fit_time", tuned_model.refit_time_)
+                mlflow.sklearn.log_model(
+                    sk_model=tuned_model.best_estimator_,
+                    artifact_path=f'{name}/{model_type}',
+                    registered_model_name=f"{name}-{model['name']}"
+                    )
+                
+                for param in tuned_model.best_params_.keys():
+                    mlflow.log_param(f"{model['name']}-{param}", tuned_model.best_params_[param])
+                
+                log_train_curve(tuned_model.best_estimator_, model['name'], scores, X_sets, y_sets)
 
         if self.multiprocess:
             mlflow_tracking = self.mlflow_tracking
