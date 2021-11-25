@@ -32,6 +32,75 @@ from utils.multiproc import parmap
 from utils.device import get_device
 from utils.neural_networks import *
 
+def sk_tune(name, model, scores, X_sets, y_sets, mlflow_tracking, model_type="sklearn"):
+    """ Turns hyperparameters of the model. """
+    def sk_score(model, model_name, scores, X_sets, y_sets, mlflow_tracking):
+        """ Returns the score of the tuned model for every set of the data. """
+        for score in scores.keys():
+            for set in range(len(X_sets)):
+                y_pred = model.predict(X_sets[set])
+
+                if scores[score]["name"] == "f1":
+                    metric = scores[score]["function"](
+                        y_sets[set], y_pred, average='weighted'
+                    )
+                else:
+                    metric = scores[score]["function"](
+                        y_sets[set], y_pred
+                    )
+                print(f"{model_name} - dataset {set}: {scores[score]['name']} = {metric}")
+
+                if mlflow_tracking:
+                    mlflow.log_metric(f"{model_name}-{scores[score]['name']}-{set}", metric)
+
+    def log_train_curve(model, model_name, scores, X_sets, y_sets):
+        train_sizes, train_scores, validation_scores, fit_times, score_times = learning_curve(
+            estimator=model,
+            X=X_sets[0],
+            y=y_sets[0],
+            train_sizes=np.linspace(0.1, 1.0, 10),
+            scoring=scores["first"]["name"],
+            return_times=True
+        )
+
+        mean_train_scores = np.mean(train_scores, axis=1)
+        mean_validation_scores = np.mean(validation_scores, axis=1)
+
+        for idx, size in enumerate(train_sizes):
+            mlflow.log_metric(
+                key=f"{model_name}-{scores['first']['name']}-train",
+                value=mean_train_scores[idx],
+                step=size
+                )
+            mlflow.log_metric(
+                key=f"{model_name}-{scores['first']['name']}-validation",
+                value=mean_validation_scores[idx],
+                step=size)
+    tuned_model =  GridSearchCV(
+        estimator=model["model"], param_grid=model["parameters"]
+        )
+    tuning_start = time.time()
+    tuned_model.fit(X=X_sets[0], y=y_sets[0])
+    tuning_end = time.time()
+    tune_time = tuning_end - tuning_start
+    print(f"{model['name']} - parameters: {tuned_model.best_params_}")
+
+    sk_score(tuned_model.best_estimator_, model['name'], scores, X_sets, y_sets, mlflow_tracking)
+
+    if mlflow_tracking:  
+        mlflow.log_metric(f"{model['name']}-tune_time", tune_time)
+        mlflow.log_metric(f"{model['name']}-fit_time", tuned_model.refit_time_)
+        mlflow.sklearn.log_model(
+            sk_model=tuned_model.best_estimator_,
+            artifact_path=f'{name}/{model_type}',
+            registered_model_name=f"{name}-{model['name']}"
+            )
+        
+        for param in tuned_model.best_params_.keys():
+            mlflow.log_param(f"{model['name']}-{param}", tuned_model.best_params_[param])
+        
+        log_train_curve(tuned_model.best_estimator_, model['name'], scores, X_sets, y_sets)
+
 class SKLearnModelSelector:
     def __init__(self, name, models=None, X_sets=None, y_sets=None, n_features=None, n_labels=None,
                 mode='regressor', mlflow_tracking_uri=None, multiproc=False) -> None:
@@ -44,7 +113,7 @@ class SKLearnModelSelector:
         self.sk_max_score = np.NINF
         self.mlflow_tracking = False
         self.device, self.num_cpu, self.num_gpu = get_device()
-        self.get_sk_models_and_metrics(mode, models)
+        self.sk_models = self.get_sk_models_and_metrics(mode, models)
         if self.device == "cuda:0":
             self.num_workers = self.num_gpu
         else:
@@ -63,12 +132,14 @@ class SKLearnModelSelector:
                 "second": {"name": "mse", "function": mean_squared_error}
             }
 
-            self.sk_total_models = {
+            sk_total_models = {
                 "linear_reg": {
+                    "name": "linear_reg",
                     "model": LinearRegression(),
                     "parameters": {'fit_intercept': [True, False]}
                 },
                 "knn_reg": {
+                    "name": "knn_reg",
                     "model": KNeighborsRegressor(),
                     "parameters": {
                         'n_neighbors': list(range(10, 30)), 
@@ -76,6 +147,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "svm_reg": {
+                    "name": "svm_reg",
                     "model": SVR(),
                     "parameters": {
                         'kernel': ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed'], 
@@ -88,6 +160,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "dt_reg": {
+                    "name": "dt_reg",
                     "model": DecisionTreeRegressor(),
                     "parameters": {
                         'min_samples_split': list(range(2, 10)), 
@@ -96,6 +169,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "rf_reg": {
+                    "name": "rf_reg",
                     "model": RandomForestRegressor(),
                     "parameters": {
                         'n_estimators': [num*10 for num in range(10, 11)],
@@ -105,6 +179,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "mlp_reg": {
+                    "name": "mlp_reg",
                     "model": MLPRegressor(),
                     "parameters": {
                         'hidden_layer_sizes': [(100, 100, 100, 100, 100)],
@@ -114,6 +189,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "fnn_reg": {
+                    "name": "fnn_reg",
                     "model": NeuralNetRegressor(
                         module=CustomBaseNetRegression,
                         optimizer=torch.optim.SGD,
@@ -144,8 +220,9 @@ class SKLearnModelSelector:
                 "second": {"name": "f1", "function": f1_score}
             }
 
-            self.sk_total_models = {
+            sk_total_models = {
                 "log_reg_clf": {
+                    "name": "log_reg_clf",
                     "model": LogisticRegression(),
                     "parameters": {
                         'fit_intercept': [True, False],
@@ -155,6 +232,7 @@ class SKLearnModelSelector:
                         }                            
                 },
                 "knn_clf": {
+                    "name": "knn_clf",
                     "model": KNeighborsClassifier(),
                     "parameters": {
                         'n_neighbors': list(range(10, 30)), 
@@ -162,6 +240,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "svm_clf": {
+                    "name": "svm_clf",
                     "model": SVC(),
                     "parameters": {
                         'kernel': ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed'], 
@@ -175,6 +254,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "dt_clf": {
+                    "name": "dt_clf",
                     "model": DecisionTreeClassifier(),
                     "parameters": {
                         'criterion': ["gini", "entropy"],
@@ -184,6 +264,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "rf_clf": {
+                    "name": "rf_clf",
                     "model": RandomForestClassifier(),
                     "parameters": {
                         'n_estimators': [num*10 for num in range(10, 11)],
@@ -195,6 +276,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "mlp_clf": {
+                    "name": "mlp_clf",
                     "model": MLPClassifier(),
                     "parameters": {
                         'hidden_layer_sizes': [(100, 100, 100, 100, 100)],
@@ -204,6 +286,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "fnn_bi_clf": {
+                    "name": "fnn_bi_clf",
                     "model": NeuralNetBinaryClassifier(
                         module=CustomBaseNetBinaryClassification,
                         optimizer=torch.optim.SGD,
@@ -226,6 +309,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "fnn_clf": {
+                    "name": "fnn_clf",
                     "model": NeuralNetClassifier(
                         module=CustomBaseNetClassification,
                         optimizer=torch.optim.SGD,
@@ -248,6 +332,7 @@ class SKLearnModelSelector:
                         }
                 },
                 "cnn_clf": {
+                    "name": "cnn_clf",
                     "model": NeuralNetClassifier(
                         module=CNNClassifier,
                         optimizer=torch.optim.SGD,
@@ -265,113 +350,29 @@ class SKLearnModelSelector:
                 }
             }
         
+        sk_models = []
         if models is not None:
-            self.sk_models = []
-
             for model in models:
-                self.sk_models.append(self.sk_total_models[model])
+                sk_models.append(sk_total_models[model])
         else:
-            for model in self.sk_total_models.keys():
-                self.sk_models.append(self.sk_total_models[model])
-        
-    def sk_tune(self, model):
-        """ Turns hyperparameters of the model. """
-        self.sk_tuned_models[model] = {"model": GridSearchCV(
-            estimator=self.sk_models[model]["model"], param_grid=self.sk_models[model]["parameters"]
-            )}
-        tuning_start = time.time()
-        self.sk_tuned_models[model]["model"].fit(X=self.X_sets[0], y=self.y_sets[0])
-        tuning_end = time.time()
-
-        self.sk_tuned_models[model]["tune_time"] = tuning_end - tuning_start
-        self.sk_tuned_models[model]["fit_time"] = self.sk_tuned_models[model]["model"].refit_time_
-        self.sk_tuned_models[model]["best_model"] = self.sk_tuned_models[model]["model"].best_estimator_
-        self.sk_tuned_models[model]["best_parameters"] = self.sk_tuned_models[model]["model"].best_params_
-
-    def sk_score(self, model):
-        """ Returns the score of the tuned model for every set of the data. """
-        y_pred_sets = {}
-        for score in self.scores.keys():
-            self.sk_tuned_models[model][self.scores[score]["name"]] = {}
-            for set in range(len(self.X_sets)):
-                y_pred_sets[set] = self.sk_tuned_models[model]["best_model"].predict(self.X_sets[set])
-
-                if self.scores[score]["name"] == "f1":
-                    self.sk_tuned_models[model][self.scores[score]["name"]][set] = self.scores[score]["function"](
-                        self.y_sets[set], y_pred_sets[set], average='weighted'
-                    )
-                else:
-                    self.sk_tuned_models[model][self.scores[score]["name"]][set] = self.scores[score]["function"](
-                        self.y_sets[set], y_pred_sets[set]
-                    )
-                print(f"{model} - dataset {set}: {self.scores[score]['name']} = {self.sk_tuned_models[model][self.scores[score]['name']][set]}")
-        print(f"{model} - parameters: {self.sk_tuned_models[model]['best_parameters']}")
-        if self.sk_tuned_models[model][self.scores['first']['name']][1] > self.sk_max_score:
-            self.sk_best_model = self.sk_tuned_models[model]
-            self.sk_best_model["name"] = model
-
-        self.get_train_curve(model)
-
-    def get_train_curve(self, model):
-        train_sizes, train_scores, validation_scores, fit_times, score_times = learning_curve(
-            estimator=self.sk_tuned_models[model]["best_model"],
-            X=self.X_sets[0],
-            y=self.y_sets[0],
-            train_sizes=np.linspace(0.1, 1.0, 10),
-            scoring=self.scores["first"]["name"],
-            return_times=True
-        )
-
-        self.sk_tuned_models[model]["train_sizes"] = train_sizes
-        self.sk_tuned_models[model]["train_scores"] = np.mean(train_scores, axis=1)
-        self.sk_tuned_models[model]["validation_scores"] = np.mean(validation_scores, axis=1)
-        self.sk_tuned_models[model]["fit_times"] = fit_times
-        self.sk_tuned_models[model]["score_times"] = score_times
-    
-    def sk_experiment(self, model, model_type="sklearn"):
-        self.sk_tune(model)
-        self.sk_score(model)
-        tuned_model = self.sk_tuned_models[model]
-
-        if self.mlflow_tracking:
-            mlflow.log_metric(f"{model}-tune_time", tuned_model["tune_time"])
-            mlflow.log_metric(f"{model}-fit_time", tuned_model["fit_time"])
-            mlflow.sklearn.log_model(
-                sk_model=tuned_model["best_model"],
-                artifact_path=f'{self.name}/{model_type}',
-                registered_model_name=f"{self.name}-{model}"
-                )
-            
-            for param in tuned_model["best_parameters"].keys():
-                mlflow.log_param(f"{model}-{param}", tuned_model["best_parameters"][param])
-
-            for score in self.scores.keys():
-                for set in range(len(self.X_sets)):
-                    mlflow.log_metric(f"{model}-{self.scores[score]['name']}-{set}", tuned_model[self.scores[score]['name']][set])
-            
-            for idx, size in enumerate(self.sk_tuned_models[model]["train_sizes"]):
-                mlflow.log_metric(
-                    key=f"{model}-{self.scores['first']['name']}-train",
-                    value=self.sk_tuned_models[model]["train_scores"][idx],
-                    step=size
-                    )
-                mlflow.log_metric(
-                    key=f"{model}-{self.scores['first']['name']}-validation",
-                    value=self.sk_tuned_models[model]["validation_scores"][idx],
-                    step=size)
+            for model in sk_total_models.keys():
+                sk_models.append(sk_total_models[model])
+        return sk_models
 
     def sk_flow(self):
-        self.sk_tuned_models = {}
-        
+
         if self.multiprocess:
-            parmap(lambda model: self.sk_experiment(model), list(self.sk_models.keys()))
+            mlflow_tracking = self.mlflow_tracking
+            name = self.name
+            models = self.sk_models
+            scores = self.scores
+            X_sets = self.X_sets
+            y_sets = self.y_sets
+            parmap(lambda model: sk_tune(name, model, scores, X_sets, y_sets, mlflow_tracking), models)
         else:
-            for model in self.sk_models.keys():
-                self.sk_experiment(model)
-
-
+            for model in self.sk_models:
+                sk_tune(self.name, model, self.scores, self.X_sets, self.y_sets, self.mlflow_tracking)
         if self.mlflow_tracking:
-            mlflow.log_param("BestModel", self.sk_best_model["name"])
             mlflow.end_run()
 
 class TorchModelSelector:
